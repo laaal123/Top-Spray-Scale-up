@@ -6,129 +6,142 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 
-# --- Spray Rate ---
-def calculate_spray_rate(SR1, AV1, AV2):
-    return round(SR1 * (AV2 / AV1), 2)
+# === Calculation Functions ===
 
-# --- Atomizing Air Volume ---
-def calculate_atomizing_air_volume(AAV1, SR1, SR2):
-    if SR1 == 0:
-        return None
-    return round(AAV1 * (SR2 / SR1), 2)
+def calc_spray_rate_scaleup(SR1, AV1, AV2):
+    # SR2 = SR1 * AV2 / AV1
+    try:
+        SR2 = SR1 * AV2 / AV1
+    except ZeroDivisionError:
+        SR2 = None
+    return SR2
 
-# --- Air Volume by Area (input area directly) ---
-def calculate_air_volume_area_input(AV1, A1, A2):
-    if A2 == 0:
-        return None
-    AV2 = AV1 * (A1 / A2)
-    return round(AV2, 2)
+def calc_atomizing_air_volume_scaleup(AAV1, SR1, SR2):
+    # AAV2 = AAV1 * SR2 / SR1
+    try:
+        AAV2 = AAV1 * SR2 / SR1
+    except ZeroDivisionError:
+        AAV2 = None
+    return AAV2
 
-# --- PDF Report ---
-def generate_pdf_report(data):
-    pdf_output = io.BytesIO()
-    doc = SimpleDocTemplate(pdf_output, pagesize=A4)
+def calc_bottom_screen_area(diameter_m):
+    # A = π * r^2, diameter input in meters
+    r = diameter_m / 2
+    return math.pi * r ** 2
+
+def calc_air_volume_scaleup(AV1, A1, A2):
+    # AV2 = AV1 * A1 / A2
+    try:
+        AV2 = AV1 * A1 / A2
+    except ZeroDivisionError:
+        AV2 = None
+    return AV2
+
+# === PDF Report Generation ===
+
+def generate_pdf_report(data_dict):
+    pdf_buffer = io.BytesIO()
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
     styles = getSampleStyleSheet()
     story = []
 
-    story.append(Paragraph("🌬️ FBP Granulation Scale-Up Report", styles['Title']))
+    story.append(Paragraph("FBP Granulation Scale-Up Report", styles['Title']))
     story.append(Spacer(1, 12))
 
-    for section_title, table_data in data:
-        story.append(Paragraph(section_title, styles['Heading2']))
-        table = Table(table_data, hAlign='LEFT')
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ]))
-        story.append(table)
+    for section, content in data_dict.items():
+        story.append(Paragraph(section, styles['Heading2']))
+        story.append(Spacer(1, 6))
+        if isinstance(content, dict):
+            for key, value in content.items():
+                story.append(Paragraph(f"<b>{key}:</b> {value}", styles['Normal']))
+                story.append(Spacer(1, 4))
+        else:
+            story.append(Paragraph(str(content), styles['Normal']))
         story.append(Spacer(1, 12))
 
     doc.build(story)
-    return pdf_output.getvalue()
+    return pdf_buffer.getvalue()
 
-# --- Streamlit App ---
+# === Streamlit App ===
+
 def main():
-    st.set_page_config(page_title="FBP Granulation Scale-Up", layout="centered")
     st.title("🌬️ FBP Granulation Scale-Up (Top Spray)")
 
-    # 1️⃣ Spray Rate
     st.header("1️⃣ Spray Rate Scale-Up")
-    SR1 = st.number_input("Lab Scale Spray Rate (SR1, g/min)", value=50.0)
-    AV1 = st.number_input("Lab Scale Air Volume (AV1, CFM)", value=100.0)
-    AV2 = st.number_input("Pilot Scale Air Volume (AV2, CFM)", value=400.0)
-    if st.button("🔄 Calculate Spray Rate (SR2)"):
-        SR2 = calculate_spray_rate(SR1, AV1, AV2)
-        st.success(f"Spray Rate at Pilot Scale (SR2): **{SR2} g/min**")
-    else:
-        SR2 = None
+    SR1 = st.number_input("Lab Scale Spray Rate (SR1, g/min)", min_value=0.0, value=50.0, key="SR1")
+    AV1 = st.number_input("Lab Scale Air Volume (AV1, CFM)", min_value=0.0, value=100.0, key="AV1")
+    AV2 = st.number_input("Pilot Scale Air Volume (AV2, CFM)", min_value=0.0, value=400.0, key="AV2")
+
+    spray_rate_result = None
+    if st.button("Calculate Spray Rate (SR2)"):
+        spray_rate_result = calc_spray_rate_scaleup(SR1, AV1, AV2)
+        if spray_rate_result is not None:
+            st.success(f"Pilot Scale Spray Rate (SR2): {spray_rate_result:.2f} g/min")
+        else:
+            st.error("Error: Division by zero encountered in Spray Rate calculation.")
 
     st.markdown("---")
 
-    # 2️⃣ Atomizing Air Volume
     st.header("2️⃣ Atomizing Air Volume Scale-Up")
-    AAV1 = st.number_input("Lab Atomizing Air Volume (AAV1, CFM)", value=10.0)
-    SR2_input = st.number_input("Pilot Scale Spray Rate (SR2, g/min)", value=SR2 or 200.0)
-    if st.button("💨 Calculate Atomizing Air Volume (AAV2)"):
-        AAV2 = calculate_atomizing_air_volume(AAV1, SR1, SR2_input)
-        if AAV2:
-            st.success(f"Pilot Scale Atomizing Air Volume (AAV2): **{AAV2} CFM**")
+    AAV1 = st.number_input("Lab Scale Atomizing Air Volume (AAV1, CFM)", min_value=0.0, value=10.0, key="AAV1")
+    SR2_for_aav = st.number_input("Pilot Scale Spray Rate (SR2, g/min)", min_value=0.0, value=200.0, key="SR2_for_aav")
+
+    atomizing_air_volume_result = None
+    if st.button("Calculate Pilot Atomizing Air Volume (AAV2)"):
+        atomizing_air_volume_result = calc_atomizing_air_volume_scaleup(AAV1, SR1, SR2_for_aav)
+        if atomizing_air_volume_result is not None:
+            st.success(f"Pilot Scale Atomizing Air Volume (AAV2): {atomizing_air_volume_result:.2f} CFM")
         else:
-            st.error("Invalid input values for atomizing air calculation.")
-    else:
-        AAV2 = None
+            st.error("Error: Division by zero encountered in Atomizing Air Volume calculation.")
 
     st.markdown("---")
 
-    # 3️⃣ Air Volume by Bottom Screen Area (direct input)
     st.header("3️⃣ Air Volume Scale-Up via Bottom Screen Area")
-    A1 = st.number_input("Lab Bottom Screen Area (A1, m²)", value=0.2)
-    A2 = st.number_input("Pilot Bottom Screen Area (A2, m²)", value=0.5)
-    AV1_area = st.number_input("Lab Scale Air Volume (AV1, CFM)", value=100.0)
-    if st.button("📐 Calculate Scaled Air Volume (AV2)"):
-        AV2_area = calculate_air_volume_area_input(AV1_area, A1, A2)
-        if AV2_area:
-            st.success(f"Scaled Air Volume (AV2): **{AV2_area} CFM**")
+
+    D_lab = st.number_input("Lab Bottom Screen Diameter (meters)", min_value=0.01, value=0.5, key="D_lab")
+    D_pilot = st.number_input("Pilot Bottom Screen Diameter (meters)", min_value=0.01, value=1.0, key="D_pilot")
+    AV1_for_area = st.number_input("Lab Scale Air Volume (AV1, CFM)", min_value=0.0, value=100.0, key="AV1_for_area")
+
+    area_lab = calc_bottom_screen_area(D_lab)
+    area_pilot = calc_bottom_screen_area(D_pilot)
+
+    air_volume_scaleup_result = None
+    if st.button("Calculate Pilot Air Volume (AV2)"):
+        air_volume_scaleup_result = calc_air_volume_scaleup(AV1_for_area, area_lab, area_pilot)
+        if air_volume_scaleup_result is not None:
+            st.success(f"Pilot Scale Air Volume (AV2): {air_volume_scaleup_result:.2f} CFM")
         else:
-            st.error("Check input values. A2 cannot be zero.")
-    else:
-        AV2_area = None
+            st.error("Error: Division by zero encountered in Air Volume calculation.")
 
     st.markdown("---")
 
-    # 📄 PDF Report
-    if st.button("📄 Generate PDF Report"):
-        report_data = []
-
-        report_data.append(("1️⃣ Spray Rate Scale-Up", [
-            ["Parameter", "Value"],
-            ["SR1 (Lab Spray Rate)", f"{SR1} g/min"],
-            ["AV1 (Lab Air Volume)", f"{AV1} CFM"],
-            ["AV2 (Pilot Air Volume)", f"{AV2} CFM"],
-            ["SR2 (Pilot Spray Rate)", f"{SR2 or 'Not calculated'} g/min"]
-        ]))
-
-        report_data.append(("2️⃣ Atomizing Air Volume Scale-Up", [
-            ["Parameter", "Value"],
-            ["AAV1 (Lab Atomizing Volume)", f"{AAV1} CFM"],
-            ["SR1 (Lab Spray Rate)", f"{SR1} g/min"],
-            ["SR2 (Pilot Spray Rate)", f"{SR2_input} g/min"],
-            ["AAV2 (Pilot Atomizing Volume)", f"{AAV2 or 'Not calculated'} CFM"]
-        ]))
-
-        report_data.append(("3️⃣ Air Volume via Bottom Screen Area", [
-            ["Parameter", "Value"],
-            ["A1 (Lab Area)", f"{A1} m²"],
-            ["A2 (Pilot Area)", f"{A2} m²"],
-            ["AV1 (Lab Air Volume)", f"{AV1_area} CFM"],
-            ["AV2 (Scaled Air Volume)", f"{AV2_area or 'Not calculated'} CFM"]
-        ]))
-
-        pdf = generate_pdf_report(report_data)
-        st.download_button("⬇️ Download PDF", data=pdf, file_name="fbp_granulation_report.pdf", mime="application/pdf")
+    # PDF Report Download - combine all calculated results
+    st.header("📄 Generate PDF Report")
+    if st.button("Generate and Download PDF Report"):
+        results = {
+            "Spray Rate Scale-Up": {
+                "Lab Scale Spray Rate (SR1, g/min)": SR1,
+                "Lab Scale Air Volume (AV1, CFM)": AV1,
+                "Pilot Scale Air Volume (AV2, CFM)": AV2,
+                "Calculated Pilot Spray Rate (SR2, g/min)": spray_rate_result if spray_rate_result is not None else "Not Calculated"
+            },
+            "Atomizing Air Volume Scale-Up": {
+                "Lab Scale Atomizing Air Volume (AAV1, CFM)": AAV1,
+                "Lab Scale Spray Rate (SR1, g/min)": SR1,
+                "Pilot Scale Spray Rate (SR2, g/min)": SR2_for_aav,
+                "Calculated Pilot Atomizing Air Volume (AAV2, CFM)": atomizing_air_volume_result if atomizing_air_volume_result is not None else "Not Calculated"
+            },
+            "Air Volume Scale-Up": {
+                "Lab Bottom Screen Diameter (m)": D_lab,
+                "Pilot Bottom Screen Diameter (m)": D_pilot,
+                "Lab Bottom Screen Area (m²)": area_lab,
+                "Pilot Bottom Screen Area (m²)": area_pilot,
+                "Lab Scale Air Volume (AV1, CFM)": AV1_for_area,
+                "Calculated Pilot Air Volume (AV2, CFM)": air_volume_scaleup_result if air_volume_scaleup_result is not None else "Not Calculated"
+            }
+        }
+        pdf_bytes = generate_pdf_report(results)
+        st.download_button(label="📄 Download PDF Report", data=pdf_bytes, file_name="fbp_granulation_scaleup_report.pdf", mime="application/pdf")
 
 if __name__ == "__main__":
     main()

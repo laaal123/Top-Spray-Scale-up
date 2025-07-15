@@ -6,164 +6,125 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 
-# Convert CFM to m3/min (1 CFM = 0.0283168 m3/min)
-def cfm_to_m3_per_min(cfm):
-    return cfm * 0.0283168
+def calculate_spray_rate(SR1, AV1, AV2):
+    return round(SR1 * (AV2 / AV1), 2)
 
-# Convert atm or psi to bar (assuming input in psi)
-def psi_to_bar(psi):
-    return psi * 0.0689476
+def calculate_atomization_air_pressure(AAP1, SR1, SR2, AAV1, AAV2):
+    if SR1 == 0 or AAV2 == 0:
+        return None
+    return round(AAP1 * (SR2 / SR1) * (AAV1 / AAV2), 2)
 
-def calculate_bottom_screen_area(radius_m):
-    return math.pi * (radius_m ** 2)
+def calculate_air_volume_area(AV1, D_lab_mm, D_pilot_mm):
+    r1 = (D_lab_mm / 1000) / 2
+    r2 = (D_pilot_mm / 1000) / 2
+    A1 = math.pi * r1 ** 2
+    A2 = math.pi * r2 ** 2
+    AV2 = AV1 * (A1 / A2)
+    return round(A1, 4), round(A2, 4), round(AV2, 2)
+
+def generate_pdf_report(data):
+    pdf_output = io.BytesIO()
+    doc = SimpleDocTemplate(pdf_output, pagesize=A4)
+    styles = getSampleStyleSheet()
+    story = []
+
+    story.append(Paragraph("🌬️ FBP Granulation Scale-Up Report", styles['Title']))
+    story.append(Spacer(1, 12))
+
+    for section_title, table_data in data:
+        story.append(Paragraph(section_title, styles['Heading2']))
+        table = Table(table_data, hAlign='LEFT')
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ]))
+        story.append(table)
+        story.append(Spacer(1, 12))
+
+    doc.build(story)
+    return pdf_output.getvalue()
 
 def main():
     st.title("🌬️ FBP Granulation Scale-Up (Top Spray)")
 
+    # 1️⃣ Spray Rate
     st.header("1️⃣ Spray Rate Scale-Up")
-    SR1 = st.number_input("Lab Scale Spray Rate (SR1) [g/min]", min_value=0.0, value=50.0, key="sr1")
-    AV1_cfm = st.number_input("Lab Scale Air Volume (AV1) [CFM]", min_value=0.0, value=100.0, key="av1")
-    AV2_cfm = st.number_input("Pilot Scale Air Volume (AV2) [CFM]", min_value=0.0, value=400.0, key="av2")
-
-    # Spray Rate Scale-Up Formula: SR2 = SR1 * (AV2 / AV1)
-    SR2 = SR1 * (AV2_cfm / AV1_cfm) if AV1_cfm != 0 else 0
-
-    st.markdown(f"**Scaled Spray Rate (SR2): {SR2:.2f} g/min**")
-
-    st.markdown("---")
-
-    st.header("2️⃣ Atomizing Air Volume Scale-Up & Atomization Air Pressure")
-    AAV1_cfm = st.number_input("Lab Scale Atomizing Air Volume (AAV1) [CFM]", min_value=0.0, value=10.0, key="aav1")
-    # Reuse SR1 and SR2 from above
-    if SR1 == 0:
-        st.error("Lab Scale Spray Rate (SR1) cannot be zero for Atomizing Air Volume calculation.")
-        return
-
-    # Atomizing Air Volume scale up: AAV2 = AAV1 * (SR2 / SR1)
-    AAV2_cfm = AAV1_cfm * (SR2 / SR1)
-
-    # Ask for Atomization Air Pressure input in psi, convert to bar
-    AAP1_psi = st.number_input("Lab Scale Atomization Air Pressure (AAP1) [psi]", min_value=0.0, value=30.0, key="aap1")
-    # Calculate Pilot scale Atomization Air Pressure assuming proportional scaling
-    # Using: Droplet size ~ Spray rate / Atomizing air volume, so keeping droplet size constant:
-    # AAP2_psi = AAP1 * (SR2 / SR1) * (AAV1 / AAV2)
-    # But since AAV2 = AAV1 * (SR2/SR1), this ratio = 1, so AAP2_psi ~ AAP1_psi
-
-    # For simplicity, just convert input psi to bar:
-    AAP1_bar = psi_to_bar(AAP1_psi)
-
-    st.markdown(f"**Scaled Atomizing Air Volume (AAV2): {AAV2_cfm:.2f} CFM**")
-    st.markdown(f"**Lab Scale Atomization Air Pressure: {AAP1_bar:.2f} bar**")
+    SR1 = st.number_input("Lab Scale Spray Rate (SR1, g/min)", value=50.0)
+    AV1 = st.number_input("Lab Scale Air Volume (AV1, CFM)", value=100.0)
+    AV2 = st.number_input("Pilot Scale Air Volume (AV2, CFM)", value=400.0)
+    if st.button("Calculate Spray Rate (SR2)"):
+        SR2 = calculate_spray_rate(SR1, AV1, AV2)
+        st.success(f"Spray Rate at Pilot Scale (SR2): **{SR2} g/min**")
+    else:
+        SR2 = None
 
     st.markdown("---")
 
+    # 2️⃣ Atomization Air Pressure
+    st.header("2️⃣ Atomizing Air Pressure Scale-Up")
+    AAV1 = st.number_input("Lab Scale Atomizing Air Volume (AAV1, CFM)", value=10.0)
+    AAP1 = st.number_input("Lab Scale Atomizing Air Pressure (AAP1, bar)", value=2.0)
+    SR2_input = st.number_input("Pilot Scale Spray Rate (SR2, g/min)", value=SR2 or 200.0)
+    AAV2 = st.number_input("Pilot Scale Atomizing Air Volume (AAV2, CFM)", value=40.0)
+    if st.button("Calculate Atomizing Pressure (AAP2)"):
+        AAP2 = calculate_atomization_air_pressure(AAP1, SR1, SR2_input, AAV1, AAV2)
+        if AAP2:
+            st.success(f"Pilot Scale Atomizing Pressure (AAP2): **{AAP2} bar**")
+        else:
+            st.error("Invalid input values for pressure calculation.")
+
+    st.markdown("---")
+
+    # 3️⃣ Area and Air Volume
     st.header("3️⃣ Air Volume Scale-Up (Bottom Screen Area)")
-
-    r1_mm = st.number_input("Lab Scale Bottom Screen Radius (r1) [mm]", min_value=1.0, value=500.0, key="r1")
-    r2_mm = st.number_input("Pilot Scale Bottom Screen Radius (r2) [mm]", min_value=1.0, value=1000.0, key="r2")
-
-    AV1_from_area_cfm = st.number_input("Lab Scale Air Volume (AV1) [CFM] (Re-input for air volume scale-up)", min_value=0.0, value=100.0, key="av1_area")
-
-    # Convert mm to meters for radius
-    r1_m = r1_mm / 1000
-    r2_m = r2_mm / 1000
-
-    A1 = calculate_bottom_screen_area(r1_m)
-    A2 = calculate_bottom_screen_area(r2_m)
-
-    # Air volume scale-up: AV2 = AV1 * (A2 / A1)
-    # **Note**: The original formula you wrote was AV2 = AV1 * (A1 / A2),
-    # but logically larger area should scale volume up, so correct is AV2 = AV1 * (A2 / A1)
-    AV2_from_area_cfm = AV1_from_area_cfm * (A2 / A1) if A1 != 0 else 0
-
-    st.markdown(f"Lab Scale Bottom Screen Area (A1): {A1:.4f} m²")
-    st.markdown(f"Pilot Scale Bottom Screen Area (A2): {A2:.4f} m²")
-    st.markdown(f"Scaled Air Volume (AV2) based on Bottom Screen Area: {AV2_from_area_cfm:.2f} CFM")
+    D_lab = st.number_input("Lab Bottom Screen Diameter (mm)", value=500.0)
+    D_pilot = st.number_input("Pilot Bottom Screen Diameter (mm)", value=1000.0)
+    AV1_area = st.number_input("Lab Scale Air Volume (AV1, CFM) for Area", value=100.0)
+    if st.button("Calculate Area & Air Volume (AV2)"):
+        A1, A2, AV2_area = calculate_air_volume_area(AV1_area, D_lab, D_pilot)
+        st.success(f"Lab Area (A1): {A1} m² | Pilot Area (A2): {A2} m² | Scaled Air Volume (AV2): {AV2_area} CFM")
+    else:
+        A1 = A2 = AV2_area = None
 
     st.markdown("---")
 
-    # --- PDF Report generation ---
+    # PDF generation
     if st.button("📄 Generate and Download PDF Report"):
-        pdf_buffer = io.BytesIO()
-        doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
-        styles = getSampleStyleSheet()
-        story = []
+        report_data = []
 
-        story.append(Paragraph("FBP Granulation Scale-Up Report (Top Spray)", styles['Title']))
-        story.append(Spacer(1, 12))
-
-        # Spray Rate Scale-Up Summary
-        story.append(Paragraph("1️⃣ Spray Rate Scale-Up", styles['Heading2']))
-        data_sr = [
+        report_data.append(("1️⃣ Spray Rate Scale-Up", [
             ["Parameter", "Value"],
-            ["Lab Scale Spray Rate (SR1) [g/min]", f"{SR1:.2f}"],
-            ["Lab Scale Air Volume (AV1) [CFM]", f"{AV1_cfm:.2f}"],
-            ["Pilot Scale Air Volume (AV2) [CFM]", f"{AV2_cfm:.2f}"],
-            ["Scaled Spray Rate (SR2) [g/min]", f"{SR2:.2f}"],
-        ]
-        table_sr = Table(data_sr, hAlign='LEFT')
-        table_sr.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.grey),
-            ('TEXTCOLOR',(0,0),(-1,0),colors.whitesmoke),
-            ('ALIGN',(0,0),(-1,-1),'CENTER'),
-            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+            ["SR1 (Lab Spray Rate)", f"{SR1} g/min"],
+            ["AV1 (Lab Air Volume)", f"{AV1} CFM"],
+            ["AV2 (Pilot Air Volume)", f"{AV2} CFM"],
+            ["SR2 (Pilot Spray Rate)", f"{SR2 or 'Not calculated'} g/min"]
         ]))
-        story.append(table_sr)
-        story.append(Spacer(1, 12))
 
-        # Atomizing Air Volume Scale-Up Summary
-        story.append(Paragraph("2️⃣ Atomizing Air Volume Scale-Up & Atomization Air Pressure", styles['Heading2']))
-        data_aav = [
+        report_data.append(("2️⃣ Atomizing Air Pressure Scale-Up", [
             ["Parameter", "Value"],
-            ["Lab Scale Atomizing Air Volume (AAV1) [CFM]", f"{AAV1_cfm:.2f}"],
-            ["Scaled Atomizing Air Volume (AAV2) [CFM]", f"{AAV2_cfm:.2f}"],
-            ["Lab Scale Atomization Air Pressure (AAP1) [psi]", f"{AAP1_psi:.2f}"],
-            ["Lab Scale Atomization Air Pressure (AAP1) [bar]", f"{AAP1_bar:.2f}"],
-        ]
-        table_aav = Table(data_aav, hAlign='LEFT')
-        table_aav.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.grey),
-            ('TEXTCOLOR',(0,0),(-1,0),colors.whitesmoke),
-            ('ALIGN',(0,0),(-1,-1),'CENTER'),
-            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+            ["AAV1 (Lab Atomizing Volume)", f"{AAV1} CFM"],
+            ["AAP1 (Lab Atomizing Pressure)", f"{AAP1} bar"],
+            ["SR2 (Pilot Spray Rate)", f"{SR2_input} g/min"],
+            ["AAV2 (Pilot Atomizing Volume)", f"{AAV2} CFM"],
+            ["AAP2 (Pilot Atomizing Pressure)", f"{calculate_atomization_air_pressure(AAP1, SR1, SR2_input, AAV1, AAV2)} bar"]
         ]))
-        story.append(table_aav)
-        story.append(Spacer(1, 12))
 
-        # Air Volume Scale-Up Summary
-        story.append(Paragraph("3️⃣ Air Volume Scale-Up (Bottom Screen Area)", styles['Heading2']))
-        data_area = [
+        report_data.append(("3️⃣ Air Volume Scale-Up (Bottom Screen Area)", [
             ["Parameter", "Value"],
-            ["Lab Scale Bottom Screen Radius (r1) [m]", f"{r1_m:.4f}"],
-            ["Pilot Scale Bottom Screen Radius (r2) [m]", f"{r2_m:.4f}"],
-            ["Lab Scale Bottom Screen Area (A1) [m²]", f"{A1:.4f}"],
-            ["Pilot Scale Bottom Screen Area (A2) [m²]", f"{A2:.4f}"],
-            ["Lab Scale Air Volume (AV1) [CFM]", f"{AV1_from_area_cfm:.2f}"],
-            ["Scaled Air Volume (AV2) [CFM]", f"{AV2_from_area_cfm:.2f}"],
-        ]
-        table_area = Table(data_area, hAlign='LEFT')
-        table_area.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.grey),
-            ('TEXTCOLOR',(0,0),(-1,0),colors.whitesmoke),
-            ('ALIGN',(0,0),(-1,-1),'CENTER'),
-            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+            ["D_lab (mm)", f"{D_lab} mm"],
+            ["D_pilot (mm)", f"{D_pilot} mm"],
+            ["A1 (Lab Area)", f"{A1 or 'N/A'} m²"],
+            ["A2 (Pilot Area)", f"{A2 or 'N/A'} m²"],
+            ["AV1 Area", f"{AV1_area} CFM"],
+            ["AV2 Area Scaled", f"{AV2_area or 'N/A'} CFM"]
         ]))
-        story.append(table_area)
-        story.append(Spacer(1, 12))
 
-        doc.build(story)
-        pdf_buffer.seek(0)
-
-        st.download_button(
-            label="📄 Download PDF Report",
-            data=pdf_buffer,
-            file_name="fbp_granulation_scale_up_report.pdf",
-            mime="application/pdf"
-        )
-
+        pdf = generate_pdf_report(report_data)
+        st.download_button("⬇️ Download PDF Report", data=pdf, file_name="fbp_granulation_report.pdf", mime="application/pdf")
 
 if __name__ == "__main__":
     main()

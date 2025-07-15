@@ -64,8 +64,6 @@ def init_session_state():
         "spray_rate_result": None,
         "atomizing_air_volume_result": None,
         "air_volume_scaleup_result": None,
-        "area_lab": None,
-        "area_pilot": None,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -122,20 +120,16 @@ def main():
 
     # --- 3. Air Volume Scale-Up via Bottom Screen Area ---
     st.header("3️⃣ Air Volume Scale-Up via Bottom Screen Area")
-    D_lab = st.number_input("Lab Bottom Screen Diameter (meters)", min_value=0.01, value=0.5, key="D_lab")
-    D_pilot = st.number_input("Pilot Bottom Screen Diameter (meters)", min_value=0.01, value=1.0, key="D_pilot")
+    A1 = st.number_input("Lab Bottom Screen Area (A1, m²)", min_value=0.0001, value=0.19635, key="A1")  # default ~ π*(0.25^2)
+    A2 = st.number_input("Pilot Bottom Screen Area (A2, m²)", min_value=0.0001, value=0.7854, key="A2")  # default ~ π*(0.5^2)
     AV1_for_area = st.number_input("Lab Scale Air Volume (AV1, CFM)", min_value=0.0, value=100.0, key="AV1_for_area")
 
-    # Calculate areas for air volume scale-up
-    st.session_state.area_lab = calc_bottom_screen_area_from_radius(D_lab / 2)
-    st.session_state.area_pilot = calc_bottom_screen_area_from_radius(D_pilot / 2)
-
     if st.button("Calculate Pilot Air Volume (AV2)"):
-        res = calc_air_volume_scaleup(AV1_for_area, st.session_state.area_lab, st.session_state.area_pilot)
+        res = calc_air_volume_scaleup(AV1_for_area, A1, A2)
         st.session_state.air_volume_scaleup_result = res
 
-    st.write(f"Lab Bottom Screen Area (A1): {st.session_state.area_lab:.4f} m²")
-    st.write(f"Pilot Bottom Screen Area (A2): {st.session_state.area_pilot:.4f} m²")
+    st.write(f"Lab Bottom Screen Area (A1): {A1:.4f} m²")
+    st.write(f"Pilot Bottom Screen Area (A2): {A2:.4f} m²")
     if st.session_state.air_volume_scaleup_result is not None:
         st.success(f"Pilot Scale Air Volume (AV2): {st.session_state.air_volume_scaleup_result:.2f} CFM")
 
@@ -162,10 +156,8 @@ def main():
                 "Calculated Pilot Atomizing Air Volume (AAV2, CFM)": st.session_state.atomizing_air_volume_result if st.session_state.atomizing_air_volume_result is not None else "Not Calculated"
             },
             "Air Volume Scale-Up": {
-                "Lab Bottom Screen Diameter (m)": D_lab,
-                "Pilot Bottom Screen Diameter (m)": D_pilot,
-                "Lab Bottom Screen Area (m²)": f"{st.session_state.area_lab:.4f}" if st.session_state.area_lab else "Not Calculated",
-                "Pilot Bottom Screen Area (m²)": f"{st.session_state.area_pilot:.4f}" if st.session_state.area_pilot else "Not Calculated",
+                "Lab Bottom Screen Area (A1, m²)": A1,
+                "Pilot Bottom Screen Area (A2, m²)": A2,
                 "Lab Scale Air Volume (AV1, CFM)": AV1_for_area,
                 "Calculated Pilot Air Volume (AV2, CFM)": st.session_state.air_volume_scaleup_result if st.session_state.air_volume_scaleup_result is not None else "Not Calculated"
             }

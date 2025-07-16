@@ -4,13 +4,22 @@ import os
 
 Title
 
-st.set_page_config(page_title="Top-Spray Granulation Scale-Up Calculator") st.title("Top-Spray Granulation Scale-Up Calculator")
+st.set_page_config(page_title="Top-Spray Granulation Scale-Up Calculator") 
+st.title("Top-Spray Granulation Scale-Up Calculator")
 
 --- User Inputs ---
 
 st.sidebar.header("Input Parameters")
 
-cross_section_small = st.sidebar.number_input("Cross-sectional area (small scale) in m^2", min_value=0.01) cross_section_large = st.sidebar.number_input("Cross-sectional area (large scale) in m^2", min_value=0.01) spray_rate_small = st.sidebar.number_input("Spray rate (small scale) in mL/min", min_value=0.01) airflow_small = st.sidebar.number_input("Airflow (small scale) in m3/h", min_value=0.01) batch_size_small = st.sidebar.number_input("Batch size (small scale) in kg", min_value=0.01) batch_size_large = st.sidebar.number_input("Batch size (large scale) in kg", min_value=0.01) atom_air_small = st.sidebar.number_input("Atomization air pressure (small scale) in bar", min_value=0.1) nozzle_heads = st.sidebar.number_input("Number of nozzle heads", min_value=1, step=1) desired_droplet_size = st.sidebar.number_input("Desired droplet size (optional, in microns)", min_value=0.0, value=0.0)
+cross_section_small = st.sidebar.number_input("Cross-sectional area (small scale) in m^2", min_value=0.01) 
+cross_section_large = st.sidebar.number_input("Cross-sectional area (large scale) in m^2", min_value=0.01) 
+spray_rate_small = st.sidebar.number_input("Spray rate (small scale) in mL/min", min_value=0.01) 
+airflow_small = st.sidebar.number_input("Airflow (small scale) in m3/h", min_value=0.01) 
+batch_size_small = st.sidebar.number_input("Batch size (small scale) in kg", min_value=0.01) 
+batch_size_large = st.sidebar.number_input("Batch size (large scale) in kg", min_value=0.01)
+atom_air_small = st.sidebar.number_input("Atomization air pressure (small scale) in bar", min_value=0.1) 
+nozzle_heads = st.sidebar.number_input("Number of nozzle heads", min_value=1, step=1) 
+desired_droplet_size = st.sidebar.number_input("Desired droplet size (optional, in microns)", min_value=0.0, value=0.0)
 
 Calculate button
 
